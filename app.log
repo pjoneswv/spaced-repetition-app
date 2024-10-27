@@ -1,0 +1,6 @@
+2024-10-27 14:10:00,901 - ERROR - An error occurred: can't invoke "wm" command:  application has been destroyed
+2024-10-27 14:13:20,695 - ERROR - Unexpected error processing PDF /Users/pauljones/Downloads/SY0-701.pdf: PyCryptodome is required for AES algorithm
+2024-10-27 14:13:28,704 - ERROR - Unexpected error processing PDF /Users/pauljones/Downloads/SY0-701.pdf: PyCryptodome is required for AES algorithm
+2024-10-27 14:14:48,697 - ERROR - Unexpected error processing PDF /Users/pauljones/Downloads/SY0-701.pdf: PyCryptodome is required for AES algorithm
+2024-10-27 14:17:00,407 - INFO - Successfully extracted 20 questions from /Users/pauljones/Downloads/SY0-701.pdf
+2024-10-27 14:20:39,861 - INFO - Successfully extracted 445 questions from /Users/pauljones/Downloads/SY0-701.pdf
