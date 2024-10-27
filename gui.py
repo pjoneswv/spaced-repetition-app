@@ -1,209 +1,119 @@
 import tkinter as tk
 from tkinter import filedialog, ttk
 from pdf_processor import extract_questions_from_pdf
-from database_manager import add_question, get_question, get_total_questions, get_question_number, clear_questions
+from database_manager import add_question, get_question, get_total_questions, get_question_number, clear_questions, update_question_progress, get_question_stats
+from database import get_random_question  # Add this import at the top
 import json
 
 class QuestionApp:
     def __init__(self, master):
         self.master = master
-        self.master.title("Exam Question Study App")
-        self.master.geometry("800x600")  # Set initial size
+        master.title("CompTIA Security+ Practice Questions")
         
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
+        # Create main container
+        self.main_frame = ttk.Frame(master, padding="10")
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.main_container = ttk.Frame(self.master)
-        self.main_container.pack(fill="both", expand=True)
-        
-        self.canvas = tk.Canvas(self.main_container)
-        self.scrollbar = ttk.Scrollbar(self.main_container, orient="vertical", command=self.canvas.yview)
-        
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        
-        self.scrollable_frame = ttk.Frame(self.canvas)
-        
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.scrollable_frame.bind("<Configure>", self._configure_scroll_region)
-        
-        self.canvas_window = self.canvas.create_window(
-            (0, 0),
-            window=self.scrollable_frame,
-            anchor="n",
-            width=self.master.winfo_width()
+        # Create and pack the question label
+        self.question_label = ttk.Label(
+            self.main_frame, 
+            wraplength=600, 
+            justify="left",
+            padding="10"
         )
+        self.question_label.pack(fill=tk.X, pady=10)
         
-        self.canvas.bind("<Configure>", self._configure_canvas_window)
+        # Create frame for options
+        self.options_frame = ttk.Frame(self.main_frame)
+        self.options_frame.pack(fill=tk.X, pady=10)
         
-        self.scrollbar.pack(side="right", fill="y")
-        self.canvas.pack(side="left", fill="both", expand=True)
-        
-        # Initialize variables
-        self.current_question_id = None
-        self.user_answer = tk.StringVar()
-        self.current_answer = tk.StringVar()
-        self.answer_submitted = False
-        
-        # Create widgets
-        self.create_widgets()
-
-        # Initial display
-        self.display_initial_state()
-
-    def _on_mousewheel(self, event):
-        """Handle mousewheel scrolling"""
-        # For Windows and MacOS
-        delta = event.delta
-        
-        # For Linux (event.delta is not available)
-        if event.num == 4:  # scroll up
-            delta = 120
-        elif event.num == 5:  # scroll down
-            delta = -120
-            
-        self.canvas.yview_scroll(int(-1 * (delta/120)), "units")
-
-    def _configure_scroll_region(self, event=None):
-        """Configure the scroll region to encompass all widgets"""
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-
-    def _configure_canvas_window(self, event=None):
-        """Resize the canvas window when the window size changes"""
-        width = event.width if event else self.master.winfo_width()
-        self.canvas.itemconfig(self.canvas_window, width=width - 4)
-
-    def resize_window(self):
-        """Adjust the window size based on content"""
-        self.master.update_idletasks()
-        self._configure_scroll_region()
-
-    # ... (rest of the methods remain exactly the same as in the previous version)
-
-    def create_widgets(self):
-        # Center container frame
-        self.center_container = ttk.Frame(self.scrollable_frame)
-        self.center_container.pack(fill="x", padx=20, pady=20)
-        
-        # Question frame
-        self.question_frame = ttk.Frame(self.center_container)
-        self.question_frame.pack(fill="x", pady=(0, 10))
-        
-        self.question_text = tk.Text(
-            self.question_frame,
-            wrap=tk.WORD,
-            height=5,
-            font=("Arial", 12),
-            width=60
-        )
-        self.question_text.pack(fill="x")
-        self.question_text.tag_configure("center", justify='center')
-        
-        # Options frame with fixed width
-        self.options_frame = ttk.Frame(self.center_container)
-        self.options_frame.pack(fill="x", pady=10)
-        
-        # Button and feedback container
-        self.control_container = ttk.Frame(self.center_container)
-        self.control_container.pack(fill="x", pady=10)
-        
-        # Submit button
+        # Create submit button
         self.submit_button = ttk.Button(
-            self.control_container,
-            text="Submit",
+            self.main_frame,
+            text="Submit Answer",
             command=self.submit_answer
         )
-        self.submit_button.pack(pady=5)
+        self.submit_button.pack(pady=10)
         
-        # Create a frame specifically for the feedback to ensure centering
-        self.feedback_frame = ttk.Frame(self.control_container)
-        self.feedback_frame.pack(fill="x", pady=5)
-        
-        # Feedback label with center alignment
+        # Create feedback label
         self.feedback_label = ttk.Label(
-            self.feedback_frame,
-            text="",
-            font=("Arial", 12),
-            wraplength=500,
-            justify="center",
-            anchor="center"
+            self.main_frame,
+            wraplength=600,
+            justify="left"
         )
-        self.feedback_label.pack(expand=True, fill="both")
+        self.feedback_label.pack(fill=tk.X, pady=10)
         
-        # Next question button
+        # Create next question button (hidden initially)
         self.next_question_button = ttk.Button(
-            self.control_container,
+            self.main_frame,
             text="Next Question",
-            command=self.next_question
+            command=lambda: self.load_question()
         )
         
-        # Progress label
+        # Initialize state variables
+        self.current_question_id = None
+        self.answer_submitted = False
+        self.user_answer = tk.StringVar()
+        
+        # Progress tracking
         self.progress_label = ttk.Label(
-            self.control_container,
-            text=""
+            self.main_frame,
+            text="Progress: 0 correct, 0 incorrect"
         )
-        self.progress_label.pack(pady=5)
+        self.progress_label.pack(pady=10)
         
-        # Upload button
-        self.upload_button = ttk.Button(
-            self.control_container,
-            text="Upload PDF",
-            command=self.upload_pdf
-        )
-        self.upload_button.pack(pady=5)
+        # Load first question
+        self.load_question()
+        
+    def resize_window(self):
+        """Resize window to fit content"""
+        self.master.update_idletasks()
+        width = self.master.winfo_reqwidth()
+        height = self.master.winfo_reqheight()
+        self.master.geometry(f"{width}x{height}")
 
     def submit_answer(self):
         if not self.answer_submitted:
             user_answer = self.user_answer.get()
             if user_answer:
                 question_data = get_question(self.current_question_id)
-                options = question_data['options']
-                explanation = question_data['explanation']
-                stored_answer = question_data['correct_answer']
+                if not question_data:
+                    self.feedback_label.config(text="Error: Could not load question data")
+                    return
                 
-                print(f"\nDEBUG - Question Data:")
-                print(f"Question ID: {self.current_question_id}")
-                print(f"Stored answer: {stored_answer}")
-                print(f"Available options: {options}")
+                options = question_data.get('options', {})
+                explanation = question_data.get('explanation', '')
+                correct_answer = question_data.get('correct_answer')
                 
-                # Map of questions to their correct answers
-                correct_answers = {
-                    1: 'D',  # Endpoint logs question
-                    2: 'D',  # Threat hunting question
-                    3: 'B',  # Cyber insurance question
-                    4: 'C',  # Full disk encryption question
-                    # Add more as needed
-                }
+                if not correct_answer:
+                    self.feedback_label.config(text="Error: No correct answer available for this question")
+                    return
                 
-                # Get the correct answer, fallback to stored answer if question not in mapping
-                correct_answer = correct_answers.get(self.current_question_id)
+                is_correct = user_answer == correct_answer
                 
-                # Verify the answer exists in options
-                if correct_answer not in options:
-                    print(f"WARNING: Mapped answer '{correct_answer}' not in options")
-                    # Try to find a valid answer
-                    for letter in ['D', 'C', 'B', 'A']:  # Try common correct answers
-                        if letter in options:
-                            correct_answer = letter
-                            break
+                # Update progress in database
+                update_question_progress(self.current_question_id, is_correct)
                 
-                if user_answer == correct_answer:
+                if is_correct:
                     result = "Correct!"
                 else:
                     result = "Incorrect."
 
-                # Safely get the option text
-                correct_option_text = options.get(correct_answer, "Option text not available")
+                correct_option_text = options.get(correct_answer, "Answer not available")
                 feedback = f"{result}\n\nThe correct answer is: {correct_answer}. {correct_option_text}\n\nExplanation:\n{explanation}"
+                
+                # Add progress information to feedback
+                stats = get_question_stats(self.current_question_id)
+                if stats:
+                    feedback += f"\n\nYour progress on this question:"
+                    feedback += f"\nCorrect: {stats['correct_count']}"
+                    feedback += f"\nIncorrect: {stats['incorrect_count']}"
                 
                 self.feedback_label.config(text=feedback)
                 self.answer_submitted = True
                 self.submit_button.config(state=tk.DISABLED)
                 self.next_question_button.pack(pady=10)
                 
-                print(f"\nDEBUG - Results:")
-                print(f"User answered: {user_answer}")
-                print(f"Correct answer used: {correct_answer}")
-                print(f"Correct option text: {correct_option_text}")
             else:
                 self.feedback_label.config(text="Please select an answer before submitting.")
         else:
@@ -262,33 +172,47 @@ class QuestionApp:
             self.load_question(next_id)
         self._configure_scroll_region()
 
-    def load_question(self, question_id):
-        print(f"\nDEBUG: Loading question {question_id}")
-        question_data = get_question(question_id)
-        print(f"DEBUG: Question data received:")
-        print(f"  Question: {question_data.get('question', 'No question')}")
-        print(f"  Options: {question_data.get('options', {})}")
-        print(f"  Correct Answer: {question_data.get('correct_answer', 'None')}")
-        print(f"  Explanation: {question_data.get('explanation', 'No explanation')}")
-        
-        if question_data:
-            self.current_question_id = question_id
-            self.display_question(question_data)
-            self.answer_submitted = False
-            self.next_question_button.pack_forget()
-            print(f"DEBUG: Question {question_id} loaded successfully")
-        else:
-            print("DEBUG: No question data received")
-            self.display_question({
-                "question": "No more questions!",
-                "options": {},
-                "correct_answer": "",
-                "explanation": "You've completed all questions."
-            })
-            self.submit_button.config(state=tk.DISABLED)
-        
-        self.master.update_idletasks()
-        self.resize_window()
+    def load_question(self, question_id=None):
+        """Load a random question"""
+        try:
+            # Get a random question
+            question_data = get_random_question()
+            
+            if question_data:
+                self.current_question_id = question_data['id']
+                
+                # Update the question display
+                self.question_label.config(text=question_data['question'])
+                
+                # Clear previous options
+                for widget in self.options_frame.winfo_children():
+                    widget.destroy()
+                
+                # Create new radio buttons for options
+                self.user_answer = tk.StringVar()
+                for letter, text in question_data['options'].items():
+                    option = ttk.Radiobutton(
+                        self.options_frame,
+                        text=f"{letter}. {text}",
+                        value=letter,
+                        variable=self.user_answer
+                    )
+                    option.pack(anchor='w', pady=5)
+                
+                # Reset submit button and feedback
+                self.submit_button.config(state=tk.NORMAL)
+                self.feedback_label.config(text="")
+                self.answer_submitted = False
+                
+                # Hide next question button until answer is submitted
+                self.next_question_button.pack_forget()
+                
+                print(f"DEBUG: Question {self.current_question_id} loaded successfully")
+            else:
+                print("DEBUG: No question data returned")
+                
+        except Exception as e:
+            print(f"DEBUG: Error loading question: {e}")
 
     def display_question(self, question_data):
         print(f"\nDEBUG: Displaying question")
@@ -405,5 +329,8 @@ class QuestionApp:
             print(f"Added missing option '{correct_answer}' to options")
 
         return question_data
+
+
+
 
 
